@@ -2,40 +2,51 @@ const express = require('express')
 const axios = require('axios')
 const app = express()
 
+app.get('/', (req, res) => {
+    res.json({ status: 'BeatMatch API is running!' })
+})
+
 app.get('/search', async (req, res) => {
     const term = req.query.term || 'pop'
     const limit = req.query.limit || 50
 
-    console.log('Searching for:', term)
+    // Try multiple storefronts until we get results
+    const countries = ['US', 'IN', 'GB', 'AU']
 
-    try {
-        const response = await axios.get('https://itunes.apple.com/search', {
-            params: {
-                term: term,
-                media: 'music',
-                entity: 'song',
-                limit: limit
-            },
-            timeout: 15000
-        })
+    for (const country of countries) {
+        try {
+            console.log(`Trying term="${term}" country=${country}`)
 
-        console.log('iTunes responded with:', response.data.resultCount, 'results')
-        res.json(response.data)
+            const response = await axios.get('https://itunes.apple.com/search', {
+                params: {
+                    term: term,
+                    media: 'music',
+                    entity: 'song',
+                    limit: limit,
+                    country: country
+                },
+                headers: {
+                    'User-Agent': 'iTunes/12.12.4 (Macintosh; OS X 12.6)'
+                },
+                timeout: 10000
+            })
 
-    } catch (error) {
-        // This will print the REAL error in your Command Prompt
-        console.log('ERROR:', error.message)
-        console.log('ERROR CODE:', error.code)
-        if (error.response) {
-            console.log('STATUS:', error.response.status)
-            console.log('DATA:', error.response.data)
+            const count = response.data.resultCount
+            console.log(`country=${country} returned ${count} results`)
+
+            if (count > 0) {
+                // Found songs — return immediately
+                return res.json(response.data)
+            }
+
+        } catch (error) {
+            console.log(`country=${country} failed:`, error.message)
         }
-        res.status(500).json({ resultCount: 0, results: [] })
     }
-})
 
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' })
+    // All countries exhausted
+    console.log('All countries failed for term:', term)
+    res.json({ resultCount: 0, results: [] })
 })
 
 app.listen(process.env.PORT || 3000, () => {
